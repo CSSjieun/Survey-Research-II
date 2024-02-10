@@ -1,6 +1,6 @@
 ---
 title: "ESS assignment"
-author: "Marga Torre"
+author: "JIEUN PARK 100509696"
 date: "`r Sys.Date()`"
 output:
   html_document:
