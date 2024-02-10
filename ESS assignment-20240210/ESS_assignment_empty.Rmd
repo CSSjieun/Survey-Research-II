@@ -11,13 +11,12 @@ output:
     df_print: paged
 ---
 
+```{=html}
 <style>
 body {
 text-align: justify}
 </style>
-
-
-
+```
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=T, message=FALSE, warning=FALSE, knitr.purl.inline = TRUE )
 
@@ -30,7 +29,6 @@ library(forcats)
 library(gmodels)
 ```
 
-
 ## Assignment
 
 As a member of a consulting firm crafting a climate change campaign, understanding public opinion on various public policies is crucial for its success. Specifically, insights into generational attitudes towards fossil fuels and renewable energy policies are essential. Conduct an analysis using data from the European Social Survey on climate change, focusing on the 2016-2017 data (Round 8), to inform the campaign's direction.
@@ -39,30 +37,29 @@ As a member of a consulting firm crafting a climate change campaign, understandi
 -   Plot the proportion of people who think that world's climate is definitely changing (`clmchng`) by country
 -   Employ bivariate models to analyze the relationship between age groups and their support for this specific policies aimed at mitigating climate change.
 
-1.    Increasing taxes on fossil fuels, such as oil, gas and coal, `inctxff`
-2.    Using public money to subsidise renewable energy such as wind and solar power,`sbsrnen`
-    
--   Make a diagnosis
-    
-    
-The variable `age group` is categorized as follows: 
+1.  Increasing taxes on fossil fuels, such as oil, gas and coal, `inctxff`
+2.  Using public money to subsidise renewable energy such as wind and solar power,`sbsrnen`
 
--   ">25"
+-   Make a diagnosis
+
+The variable `age group` is categorized as follows:
+
+-   "\>25"
 -   "25-44"
 -   "45-64"
--   ">=65"
-
+-   "\>=65"
 
 ### Read data
+
 ```{r warning=F, message=F}
 ess8 <- read_csv("./ESS8_all.csv")
 str(ess8)
 ```
 
-
 ### Data wrangling
 
 Clean and recode `age` variable
+
 ```{r}
 ess8 = ess8 |> mutate(age = replace(agea, agea > 103, NA))
 summary(ess8$age)
@@ -76,7 +73,8 @@ with(ess8, table(essround, age_rec))
 table(ess8$cntry, ess8$age_rec)
 ```
 
-Clean and recode the variables `inctxff` 
+Clean and recode the variables `inctxff`
+
 ```{r}
 table(ess8$inctxff)
 
@@ -99,8 +97,7 @@ ess8 <- ess8 %>%
   )
 ```
 
-
-Clean and recode the variables `sbsrnen` 
+Clean and recode the variables `sbsrnen`
 
 ```{r}
 ess8 = ess8 |> mutate(subsidies_survey = replace(sbsrnen, sbsrnen >= 7, NA))
@@ -119,7 +116,8 @@ ess8 = ess8 %>%
                         `4` = "Somewhat in favour",
                         `5` = "Strongly in favour"))
 ```
-Clean and recode the variables `clmchng` 
+
+Clean and recode the variables `clmchng`
 
 ```{r}
 table(ess8$clmchng)
@@ -140,10 +138,10 @@ ess8 = ess8 %>%
                         `4` = "Definitely changing"))
 ```
 
-
 ### Analysis
 
 Plot the proportion of people who think that world's climate is definitely changing (`clmchng`) by country
+
 ```{r}
 climate = ess8 |> select(cntry, climate_survey)
 table(climate$climate_survey)
@@ -170,17 +168,12 @@ ggplot(climate,aes(x=Var1, y=proportion_DC, fill = Var1)) + geom_col() +
 Examine the association between `age_group` and individuals' opinions on increasing taxes on fossil fuels, such as oil, gas, and coal.
 
 ```{r message=FALSE}
-tax_survey, age_rec
-table(age_tax$Var2)
-table(ess8$age_rec, ess8$tax_survey)
-
 age_tax = ess8 |> select(tax_survey, age_rec)
 age_tax = na.omit(age_tax)
 
 age_tax = data.frame(table(age_tax$age_rec, age_tax$tax_survey))
 age_tax$Var2 = factor(age_tax$Var2, 
-                     levels = c("Strongly in favour", "Somewhat in favour", "Neither in favour nor against",
-                                "Somewhat against", "Strongly against"))
+                     levels = c("Strongly in favour", "Somewhat in favour", "Neither in favour nor against","Somewhat against", "Strongly against"))
 age_tax = age_tax[order(age_tax$Var2),] 
 table(age_tax)
 table(is.na(age_tax))
@@ -199,6 +192,7 @@ age_tax |> ggplot(aes(x=Var1, y = Freq, fill = Var2)) + geom_col(position ="dodg
 ```
 
 Examine the association between `age_group` and individual's opinion about using public money to subsidise renewable energy such as wind and solar power.
+
 ```{r message=FALSE}
 age_subsidy = ess8 |> select(age_rec, subsidies_survey)
 table(age_subsidy)
@@ -208,8 +202,7 @@ age_tax = na.omit(age_subsidy)
 age_subsidy = data.frame(table(age_subsidy$age_rec, age_subsidy$subsidies_survey))
 table(is.na(age_subsidy))
 age_subsidy$Var2 = factor(age_subsidy$Var2, 
-                     levels = c("Strongly in favour", "Somewhat in favour", "Neither in favour nor against",
-                                "Somewhat against", "Strongly against"))
+                     levels = c("Strongly in favour", "Somewhat in favour", "Neither in favour nor against","Somewhat against", "Strongly against"))
 age_subsidy = age_subsidy[order(age_subsidy$Var2),] 
 table(age_subsidy)
 table(is.na(age_subsidy))
@@ -227,5 +220,3 @@ age_subsidy |> ggplot(aes(x=Var1, y = Freq, fill = Var2)) + geom_col(position ="
   scale_x_discrete(labels = c("less than 20 years old", "20-29", "30-44", "45-64", "more than 65 years old"))
 
 ```
-
-

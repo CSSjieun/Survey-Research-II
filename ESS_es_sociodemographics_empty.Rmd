@@ -42,7 +42,7 @@ The European Social Survey (ESS) is an academically driven cross-national survey
 ## Read data
 ```{r}
 library(readr)
-data_full <- read_csv("ESS_es.csv")
+data_full <- read_csv("./ESS_es.csv")
 dim(data_full)
 ```
 
@@ -136,13 +136,24 @@ Based on the _EISCED_ variable, generate a variable named _educ_level_ with the 
 3.  High education
 
 ```{r}
-data = data |> mutate(
-  educ_level = case_when(
-    eisced %in% c(1,2) ~ "Low education",
-    eisced %in% c(3,4) ~ "Medium education",
-    eisced %in% c()
+data <- data |>
+  mutate(
+    educ_level = case_when(
+      eisced %in% c(1, 2) ~ "1",
+      eisced %in% c(3, 4) ~ "2",
+      eisced %in% c(5, 6, 7) ~ "3",
+      eisced %in% c(0, 55, 77, 88, 99) ~ NA_character_,
+      TRUE ~ NA_character_
+    )
+  ) |>
+  mutate(
+    educ_level = fct_recode(educ_level,
+                            "Low education" = "1",
+                            "Secondary education" = "2",
+                            "High education" = "3")
   )
-)
+
+with(data, table(essround, educ_level))
   
 ```
 
@@ -174,7 +185,27 @@ Using the variables _iscoco_ (waves <=5) and _isco08_ (waves >5), generate a new
 
 
 ```{r}
+data <- data |>
+  mutate(occup_cat = case_when(
+    essround <= 5 ~ iscoco,
+    essround >= 6 ~ isco08,
+    TRUE ~ NA_real_
+  )) 
 
+data <- data |> 
+  mutate(
+    occup_cat = replace(occup_cat, which(occup_cat > 10000), NA),
+    occup_cat = cut(
+      occup_cat,
+      breaks = c(0, 1999, 2999, 3999, 4999, 5999, 6999, 9999),
+      labels = c(
+        "managers",
+        "professionals",
+        "technicians",
+        "clerical",
+        "service",
+        "agricultural",
+        "blue-collar")))
 ```
 
 
@@ -186,6 +217,16 @@ References:
 
 -   Oesch, D. (2006a) "Coming to grips with a changing class structure" _International Sociology_ 21 (2): 263-288.
 -   Oesch, D. (2006b) "Redrawing the Class Map. Stratification and Institutions in Britain, Germany, Sweden and Switzerland", Basingstoke: Palgrave Macmillan.
+
+```{r}
+data2<-data_full |> select (idno, essround, emplrel, emplno) 
+data <-left_join(data, data2, by=c("essround", "idno"))
+
+data$isco_mainjob <- data$iscoco
+data$isco_mainjob[is.na(data$isco_mainjob)] <- -9
+var_label(data$isco_mainjob) <- "Current occupation of respondent - isco88 4-digit"
+```
+
 
 
 #### 5-Class schema constructed
