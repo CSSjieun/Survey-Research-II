@@ -322,6 +322,7 @@ Specify the method for imputing the missing values. The missing values of variab
 
 ```{r}
 meth[c("Age")]="cart"
+#Only Age had the NAs. 
 
 ```
 
@@ -342,8 +343,11 @@ We can get back the completed dataset using the `complete()` function. The missi
 function.
 
 ```{r}
-completed_imputed_1 <- complete(imputed_cart, 1) # Replace missing data with imputed data in the first dataset
+completed_imputed_1 <- complete(imputed_cart, 1)# Replace missing data with imputed data in the first dataset
+completed_imputed_2 = complete(imputed_cart, 2)
 completed_imputed <- complete(imputed_cart, "all") # List of 5 datasets
+completed_imputed[[2]]
+completed_imputed[[1]]
 ```
 
 The  next step is to fit a generalized linear model (GLM) to the data to estimate the survival probability. You might wonder which imputed dataset to select. The `mice` package simplifies this process by allowing us to fit a model to each imputed dataset and then aggregate the results using `pool()`.
@@ -355,6 +359,7 @@ summary(model0)
 
 # Regression with 5 imputed datasets
 model1 <- with(imputed_cart, glm(Survived ~ Pclass + SibSp + Parch + Age))
+model1[[3]]
 summary(pool(model1))
 ```
 
