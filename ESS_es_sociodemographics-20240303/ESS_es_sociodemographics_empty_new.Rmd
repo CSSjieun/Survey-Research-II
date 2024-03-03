@@ -1,0 +1,221 @@
+---
+title: "Using Socio-Demographic Data in Practice"
+author: "Marga Torre"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+---
+
+<style>
+body {
+text-align: justify}
+</style> 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=T, message=FALSE, warning=FALSE, knitr.purl.inline = TRUE)
+```
+
+```{r include=FALSE}
+library(haven)
+library(tidyverse)
+library(knitr)
+library(gmodels)
+library(ggplot2)
+library(openxlsx)
+library(skimr)
+library(ggplot2)
+library(janitor)
+library(readr)
+library(dplyr)
+library(labelled)
+library(essurvey)
+```
+
+## European Social Survey
+The European Social Survey (ESS) is an academically driven cross-national survey that has been conducted across Europe since its establishment in 2001. Every two years, face-to-face interviews are conducted with newly selected, cross-sectional samples. (Taken from the [ESS website](http://www.europeansocialsurvey.org/about-ess))
+
+
+## Read data
+```{r}
+data_full <- read_csv("./ESS_es.csv")
+dim(data_full)
+```
+
+You can use the [`essurvey` package](https://cran.r-project.org/web/packages/essurvey/index.html) to retrieve the data from the website. However, since it is not working properly at the moment while I'm preparing for the class, I have downloaded and imported the data in the conventional way.
+
+
+### Select variables
+ESS round + ID + socio-demographic profile, including: gender, age of the respondent, years of education, level of education, occupation, household's total net income and citizenship. Please be aware that __some variable names may change from one round to another__.
+
+```{r}
+data<- data_full |> select(essround, idno, gndr, agea, eduyrs, eisced, iscoco, isco08, hinctnt, hinctnta)
+```
+
+## Data cleaning and data wrangling 
+### Gender
+
+Generate a new variable named `men` and assign it the following values. Label the categories of the variable  and check the results using a table.
+
+-   1=man
+-   0=woman
+-   other=NA
+
+```{r}
+data$men = if_else(data$gndr == 1, "men", 
+                           if_else(data$gndr == 2, "women", NA))
+table(data$men)
+```
+
+### Age
+
+Generate a continuous variable named `age`, with the maximum value being 103 years:
+
+```{r}
+data = data |> mutate(age = replace(agea, agea>=103, NA))
+
+summary(data$age)
+```
+
+Using the continuous variable `age`, generate a new variable named `age_rec` with the following categories (levels). Don't forget to label the categories of the variable and check the results using a table.
+
+1.  "<20"
+2.  "20-29"
+3.  "30-44"
+4.  "45-64"
+5.  ">=65" 
+
+```{r}
+data <- data |> 
+  mutate(age_rec = cut(agea, breaks = c(0, 19, 29, 44, 64, 103),
+                       labels = c("<20", "20-29", "30-44", "45-64", ">=65")))
+
+with(data, (table(essround, age_rec))) # it indicates the variables name in the table
+table(data$essround, data$age_rec) # it does not have variables name in the table
+```
+
+### Education
+Generate a variable named `years_schooling` defined as a continuous variable. 
+
+```{r}
+data <- data |> mutate(years_schooling = if_else(data$eduyrs <77, eduyrs, NA))
+with(data, table(essround, years_schooling))
+```
+
+Based on the _EISCED_ variable, generate a variable named _educ_level_ with the below categories. Ensure that the categories of the new variable are labeled  and check the results using a table.
+
+1.  Low education
+2.  Medium education
+3.  High education
+
+```{r}
+data = data |> mutate(educ_level = 
+                        case_when(
+                          eisced %in% c(1,2) ~ "1",
+                          eisced %in% c(3,4) ~ "2",
+                          eisced %in% c(5,6,7) ~ "3",
+                          eisced %in% c(55,77,88,99) ~ NA,
+                          TRUE ~ NA
+                        )) |> 
+  mutate(educ_level = fct_recode(educ_level,
+                                   "Low education" = "1",
+                                   "Medium education" = "2",
+                                   "High eudcation" = "3"))
+
+
+
+table(data$educ_level)
+```
+
+
+### Household's total net income
+Generate a scale variable named hincome displaying income deciles. Note that the variable name changes from wave 3 to wave 4.
+
+```{r}
+data <- data |> mutate(hincome = 
+                         case_when(
+                           essround <= 3 ~ hinctnt,
+                           essround >=4 ~ hinctnta,
+                           TRUE ~ NA
+                         ))
+
+data <- data |> relocate(hincome, .before = hinctnt)
+with(data, table(essround, hincome))
+
+# ntile(head(data$hinctnt), 10)
+# ntile(tail(data$hinctnta), 10)
+```
+
+
+### Occupational categories
+Using the variables _iscoco_ (waves <=5) and _isco08_ (waves >5), generate a new variable named `occup_cat` with the following levels:
+
+1.    Managers
+2.    Professionals
+3.    Technicians
+4.    Clerical
+5.    Service
+6.    Agricultural
+7.    Blue-collar
+
+
+```{r}
+data <- data |> mutate(occup_cat = 
+                         case_when(
+                           essround <=5 ~ iscoco,
+                           essround >5 ~ isco08,
+                           TRUE ~ NA
+                         ))
+
+
+data <- data |> 
+  mutate(
+    occup_cat = replace(occup_cat, which(occup_cat > 10000), NA),
+    occup_cat = cut(
+      occup_cat, breaks = c(0, 1999, 2999, 3999, 4999, 5999, 6999, 9999),
+      labels = c(
+        "managers",
+        "professionals",
+        "technicians",
+        "clerical",
+        "service",
+        "agricultural",
+        "blue-collar"
+      )
+    )
+  )
+
+table(data$occup_cat)
+```
+
+
+## OPTIONAL: Social class - Daniel Oesch 
+
+Replicate Daniel Oesch's files __to construct the 5-class schemes__ for the interviewee's class position. Please note that starting from wave 6, there has been a change in the occupation classification from `iscoco` to `isco08`. Use [the scripts provided by Daniel Oesch](https://people.unil.ch/danieloesch/scripts/)
+
+References:
+
+-   Oesch, D. (2006a) "Coming to grips with a changing class structure" _International Sociology_ 21 (2): 263-288.
+-   Oesch, D. (2006b) "Redrawing the Class Map. Stratification and Institutions in Britain, Germany, Sweden and Switzerland", Basingstoke: Palgrave Macmillan.
+
+```{r}
+data2 <- data_full |> select (idno, essround, emplrel, emplno) 
+data <- left_join(data, data2, by=c("essround", "idno"))
+
+data$isco_mainjob <- data$iscoco
+data$isco_mainjob[is.na(data$isco_mainjob)] <- -9
+var_label(data$isco_mainjob) <- "Current occupation of respondent - isco88 4-digit"
+```
+
+
+
+#### 5-Class schema constructed
+
+1.    Higher-grade service class
+2.    Lower-grade service class
+3.    Small business owners
+4.    Skilled workers
+5.    Unskilled workers
+
