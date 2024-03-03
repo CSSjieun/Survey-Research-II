@@ -1,0 +1,154 @@
+---
+title: "Exercise: Handling Missing Data"
+author: "Marga Torre"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+---
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=T, message=FALSE, warning=FALSE, knitr.purl.inline = TRUE )
+
+```
+
+```{r include=F}
+library(tidyverse)
+library(knitr)
+library(gmodels)
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(cowplot)
+library(mice)
+```
+
+## Read data
+
+Load "extracted_data_wrangling_code.R" to clean up variables
+```{r, include=FALSE}
+source("extracted_data_wrangling_code.R", local = knitr::knit_global())
+```
+
+Filter data for Round 9
+```{r}
+data<- data |> filter(data$essround==9)
+```
+
+Select the following variables: identification number, age, sex, years of schooling, and household income
+```{r}
+data<-data |> select("idno", "hincome", "male", "age", "years_schooling")
+```
+
+To handle categorical variables (e.g. male), we encode the levels and recode the values to end up with a numeric variable ranging from 0 to 1. 
+```{r}
+data <- data |>
+  mutate_if(is.factor, as.numeric) |>
+    mutate(male = recode(male, `2` = 0))
+str(data)
+```
+
+Let's run a linear regression to estimate the years of schooling based on household income, age, and gender of the interviewee. 
+```{r}
+m0<-lm(years_schooling ~ age + male + hincome, data)
+summary(m0)
+```
+
+As observed, 484 observations have been excluded due to missing data. First, let's examine the amount of missing data within each covariate.
+```{r}
+# Using is.na()
+summary(is.na(data))
+
+# Using md.pattern() from `mice`
+md.pattern(data) 
+```
+
+There are three variables with missing data: 'household income' (463 cases), 'age' (1 case), and 'years of schooling' (54 cases), with the latter being the outcome variable. Begin the imputation of missing data by using the median, and then apply the mice() function with methods _norm.boot_, _pmm_, and _rf_. In all cases, generate 10 imputed datasets
+```{r results='hide'}
+library(mice)
+data_imputed <- data.frame(
+  idno = data$idno,
+  original = data$hincome,
+  imputed_median = replace(data$hincome, is.na(data$hincome), median(data$hincome, na.rm = TRUE)),
+  imputed_normboot = complete(mice(data, m=10, method = "norm.boot", seed=123))$hincome,
+  imputed_pmm = complete(mice(data, m=10, method = "pmm", seed=123))$hincome,
+  imputed_rf = complete(mice(data, m=10, method = "rf", seed=123))$hincome
+)
+```
+
+```{r}
+head(data_imputed, 10)
+```
+
+Plot the results to compare the resulting distributions
+```{r}
+# Define variables, titles, and colors for the new imputation methods
+variables <- c("original", "imputed_median", "imputed_normboot", "imputed_pmm", "imputed_rf")
+titles <- c("Distribution of the Age Variable", "Median-imputed Distribution", "Norm Boot-imputed Distribution", "PMM-imputed Distribution", "Random Forest-imputed Distribution")
+colors <- c("skyblue", "orchid", "aquamarine", "coral", "hotpink")
+
+# Initialize an empty plot list for the new plots
+plots <- list()
+
+# Loop through variables to create plots for each imputation method
+for (i in 1:length(variables)) {
+  plots[[i]] <- ggplot(data_imputed, aes_string(x = variables[i])) +
+    geom_histogram(binwidth = 1, fill = colors[i], color = paste0(colors[i], "3")) + 
+    ggtitle(titles[i]) +
+    theme_classic()
+}
+
+# Combine plots into a grid, adjusting for the total number of plots
+plot_grid(plotlist = plots, nrow = 3, ncol = 2)
+```
+
+The most similar distributions are produced by MICE using _cart_ and _rf_ methods. Now, merge the imputed values from the MICE-random forest method into the primary dataset.
+```{r}
+data <- data |>
+  left_join(data_imputed, by = "idno") |>
+  select(idno, years_schooling, age, male, hincome, imputed_rf)
+
+head(data, 6)
+```
+
+What happens is that if you perform a merge, it only imports data from the first imputed dataset, ignoring the other 9 imputed dataset. Therefore, the best course of action is to recalculate the imputations to inspect them and ensure everything is correct before pooling.
+
+Prepare data for Multiple Imputation:
+```{r}
+data<-data |> select("hincome", "male", "age", "years_schooling")
+init = mice(data) 
+meth = init$method
+```
+
+Specify a vector of variables that won't be imputed but will be used for prediction
+```{r}
+meth[c("years_schooling")]="" 
+```
+
+Specify the method for imputing the missing values
+```{r}
+meth[c("hincome", "age")]="rf"
+```
+
+Execute the multiple imputation function, specifying 10 iterations. Check the results using summary()
+```{r}
+imputed_rf = mice(data, method=meth, m=10, seed=123)
+summary(imputed_rf)
+```
+
+Finally, run a linear regression using the imputed values from the `rf` method. As observed, there are now only 54 missing values, all corresponding to the dependent variable.
+```{r}
+m1 <- with(imputed_rf, glm(years_schooling ~ age + male + hincome))
+summary(pool(m1))
+```
+
+Interpret the results.
