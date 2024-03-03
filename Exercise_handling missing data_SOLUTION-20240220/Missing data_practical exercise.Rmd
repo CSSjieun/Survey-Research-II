@@ -1,5 +1,5 @@
 ---
-title: "Exercise: Handling Missing Data"
+title: "Exercise: Handling Missing Data solution"
 author: "Marga Torre"
 date: "`r Sys.Date()`"
 output:
