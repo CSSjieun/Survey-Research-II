@@ -41,25 +41,27 @@ source("extracted_data_wrangling_code.R", local = knitr::knit_global())
 
 Filter data for Round 9
 ```{r}
-data<- data |> filter(data$essround==9)
+data <- data |> filter(data$essround==9)
 ```
 
 Select the following variables: identification number, age, sex, years of schooling, and household income
 ```{r}
-data<-data |> select("idno", "hincome", "male", "age", "years_schooling")
+data <- data |> select("idno", "hincome", "male", "age", "years_schooling")
 ```
 
 To handle categorical variables (e.g. male), we encode the levels and recode the values to end up with a numeric variable ranging from 0 to 1. 
+
 ```{r}
 data <- data |>
   mutate_if(is.factor, as.numeric) |>
-    mutate(male = recode(male, `2` = 0))
+    mutate(male = recode(male, "2" = 0))
+
 str(data)
 ```
 
 Let's run a linear regression to estimate the years of schooling based on household income, age, and gender of the interviewee. 
 ```{r}
-m0<-lm(years_schooling ~ age + male + hincome, data)
+m0 <- lm(years_schooling ~ age + male + hincome, data)
 summary(m0)
 ```
 
@@ -117,12 +119,14 @@ data <- data |>
   left_join(data_imputed, by = "idno") |>
   select(idno, years_schooling, age, male, hincome, imputed_rf)
 
+head(data_imputed, 6)
 head(data, 6)
 ```
 
 What happens is that if you perform a merge, it only imports data from the first imputed dataset, ignoring the other 9 imputed dataset. Therefore, the best course of action is to recalculate the imputations to inspect them and ensure everything is correct before pooling.
 
 Prepare data for Multiple Imputation:
+
 ```{r}
 data<-data |> select("hincome", "male", "age", "years_schooling")
 init = mice(data) 
