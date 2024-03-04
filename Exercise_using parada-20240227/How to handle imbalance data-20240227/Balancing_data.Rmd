@@ -1,0 +1,240 @@
+---
+title: "Balancing data"
+subtitle: "Survey Methodology II"
+author: "Marga Torre"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+---
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=T, message=FALSE, warning=FALSE, knitr.purl.inline = TRUE )
+```
+
+```{r, include=FALSE}
+library(readr)
+library(tidyverse)
+library(psych)
+library(ggplot2)
+library(caret)
+library(randomForest)
+
+```
+
+## What is unbalance data?
+
+An imbalanced classification problem occurs when the distribution of examples among the various classes is uneven or skewed. This imbalance can range from mild to extreme, with the minority class having as few as one example compared to hundreds, thousands, or even millions of examples in the majority class or classes.
+
+```{r}
+# Create an imbalanced variable
+unbalance <- data.frame(Class = sample(c('Class 0', 'Class 1'), 1000, replace = TRUE, prob = c(0.2, 0.8)))
+
+# Plot the variable
+ggplot(unbalance, aes(x = Class)) +
+  geom_bar(aes(fill = Class)) +
+  theme_minimal() +
+  labs(title = "Imbalanced Class Distribution", x = "Class", y = "Count") +
+  scale_fill_manual(values = c('Class 0' = 'gold', 'Class 1' = 'lightblue'))
+
+```
+
+A common example is when trying to spot fraud in transactions. Here, you typically have two types of transactions: ones marked as 1 for being fraudulent, and ones marked as 0 for being normal. In most cases, less than 1% of all transactions are fraudulent, meaning almost all the data points represent normal transactions. This creates a significant imbalance in the dataset.
+
+-   The majority class is the class with the highest number of samples;
+-   The minority class is the class with the lowest number of samples;
+-   The **class ratio** is defined as the ratio between the size of the minority class and the size of the majority class.
+
+In practice:
+
+| Degree of Imbalance | Minority Proportion         |
+|---------------------|-----------------------------|
+| Mild                | 20% to 40% of the dataset   |
+| Moderate            | 1% to 20% of the dataset    |
+| Extreme             | Less than 1% of the dataset |
+
+While This problem is faced more frequently in binary classification problems than multi-level classification problems, it could also happen. if the target variable is divided into three categories, you might find that 70% of the data falls into the first category, with the rest split between the second and third categories at 17% and 13% respectively. This uneven distribution leads to another example of an unbalanced dataset.
+
+## Why and when is this a problem?
+
+Most machine learning algorithms were initially designed to work with balanced datasets (Brownlee, 2020). As a result, these models often struggle to correctly identify instances from the minority class, which are typically more important. This is because the models are exposed to more instances from the majority class and tend to misclassify minority cases as majority ones.
+
+Why isn't accuracy the best metric for imbalanced datasets? Consider a dataset with a significant skew of 99:1 for yes to no responses. In this scenario, a model that always predicts 'yes' would achieve a 99% accuracy rate. However, this approach would incorrectly classify all the minority 'no' cases, leading to poor predictive performance for the more critical or interesting outcomes. Instead of accuracy, alternative metrics such as specificity, sensitivity, precision, or the Area Under the Curve (AUC) should be considered. These metrics provide a more nuanced view of the model's performance, especially in imbalanced settings.
+
+## How to handle with balance problems?
+
+Resampling techniques employed to address class imbalance include the following:
+
+-   Undersampling
+-   Oversampling
+-   ROSE
+-   (SMOT)
+
+To see how they works in practice, we will replicate a well-known example using dataset from people applying to a Harvard program. The dependent variable `admit` measures the results of the applications. Most of the applications are rejected (68%), while only a minority are accepted (32%), creating an imbalance problem to be analyzed.
+
+```{r}
+data <- read_csv("harvard_admissions.csv")
+describe(data)
+```
+
+Check the outcome variable `admit`:
+
+```{r}
+table(data$admit)
+```
+
+Let's split the data into training and test sets.
+
+```{r}
+set.seed(123)
+
+# Generate an index
+index <- createDataPartition(data$admit, p = 0.7, list = FALSE, times = 1)
+
+# Subset the dataframe
+train <- data[index, ]
+test <- data[-index, ]
+
+# Check the train and test set
+table(train$admit)
+prop.table(table(train$admit))
+
+table(test$admit)
+prop.table(table(test$admit))
+```
+
+Next, we'll run a classification model. For this example, let's use a random forest:
+
+```{r}
+# Admit as factor
+# Because we'll run a classification model, we change the dependent variable as factor
+train$admit <- as.factor(train$admit)
+test$admit <- as.factor(test$admit)
+
+# Run the classification model on the train set
+set.seed(123)
+rftrain <- randomForest(admit~., data = train, ntree=500)
+```
+
+Examine the resulting confusion matrix
+
+```{r}
+confusionMatrix(predict(rftrain, test), test$admit, positive = '1')
+```
+
+Remember that **accuracy** is the proportion of correctly classified objects out of the total number of objects. In other words, it indicates how often the model is correct overall. Currently, the model's accuracy is around 73%, and based on a 95% confidence interval, the accuracy lies between 65% and 80%. You can calculate accuracy by dividing the sum of true predictions by the total number of predictions (e.g., (79+9)/120 = 0.73).
+
+Accuracy is a useful metric that is easy to understand. However, it can be misleading for imbalanced datasets, where one class significantly outnumbers the other. As there are many non-accepted applications (273 out of 364), out model is heavily biased towards reflecting how well it can identify non-accepted applicants. The accuracy figure is not very informative if your main interest is in identifying accepted applications.
+
+**Sensitivity** (also known as True Positive Rate) measures the proportion of actual positives (admitted applications) that are correctly identified by the model. It is calculated as the ratio of true positives (cases correctly identified as positive) to the total actual positives (the sum of true positives and false negatives). In our example, the sensitivity is 0.29, indicating that the model correctly identifies less than one-third of the actual positive cases.
+
+**Specificity** (also known as True Negative Rate) refers to the proportion of actual negatives (non-admitted applications) that are correctly identified by the model. It is calculated as the ratio of true negatives (cases correctly identified as negative) to the total actual negatives (the sum of true negatives and false positives). In our example, the specificity is 0.89, indicating that the model correctly identifies 89% of the actual negative cases. This is much higher than sensitivity, suggesting the model is better at identifying unsuccessful applications than successful ones.
+
+### Undersampling and oversampling
+
+The undersampling method targets the majority class. It involves counting the instances of the minority class in the dataset and then randomly selecting an equivalent number of instances from the majority class. This method is best used when the dataset is large, as reducing the number of training samples can help improve runtime and alleviate storage issues.
+
+In contrast, the oversampling method (also known as *upsampling*) focuses on the minority class. It involves duplicating observations from the minority class to balance the data. However, this technique has its drawbacks, as repeated duplication can lead to overgeneralization of the minority class, potentially compromising the model's performance.
+
+<center>
+
+![Undersampling vs. Oversampling](oversampling_and_undersampling.png){width="500px"}
+
+</center>
+
+There are different packages to deal with imbalance data, here we're going to the package ROSE ([Ramdom Over-Sampling Examples](https://cran.r-project.org/web/packages/ROSE/ROSE.pdf)). The `ovun.sample()` function creates balanced samples by random over-sampling minority examples, under-sampling majority examples or combination of over- and under-sampling. Let's start with undersampling.
+
+```{r}
+install.packages("ROSE")
+library(ROSE)
+under <- ovun.sample(admit~., 
+                     data=train, 
+                     method = "under", 
+                     # undersampling
+                     N = 192)$data # why 192 is when doing undersampling I'm asking the reducing the sample from majority class to make it similiar to minority class. 96 from majority and 96 from minority class. 
+
+table(under$admit)
+```
+
+Instead of using all observations, we will take relevant observations from class 0 corresponding to class 1. Since class 1 in the train set contains 96 observations, we need to take only 96 observations from class 0.
+
+Let's recheck the confusion matrix and statistics.
+
+```{r}
+set.seed(123)
+rfunder <- randomForest(admit~., data=under)
+confusionMatrix(predict(rfunder, test), test$admit, positive = '1')
+```
+
+Specificity has increased from 0.29 to 0.61. However, under-sampling is not recommended because it significantly reduces the overall accuracy level (from 73 to 61%).
+
+Let's try then with oversampling:
+
+```{r}
+over <- ovun.sample(admit~., 
+                    data = train, 
+                    method = "over", # oversampling
+                    N = 368)$data # majority class has the 184 cases and we duplicate the data from the majority class to majority class to make it also have 184 cases.
+table(over$admit)
+
+# run de model
+set.seed(123)
+rfover <- randomForest(admit~., data = over)
+confusionMatrix(predict(rfover, test), test$admit, positive = '1')
+```
+
+Now the accuracy is 66% and sensitivity has increased to 52%. Assuming our main interest is in predicting class 1, this model performs worse than the previous one.
+
+Finally, let's attempt to combine both methods. In this scenario, N equals twice the number of observations in the training set (2\*n(train)). The resulting distribution of cases among categories may not be exact, but it achieves a balanced state.
+
+```{r}
+both <- ovun.sample(admit~., data=train, method = "both",
+                    p = 0.5,
+                    seed = 123,
+                    N = 560)$data # double the data from the train set
+table(both$admit) 
+```
+
+```{r}
+set.seed(123)
+rfboth <-randomForest(admit~., data=both)
+confusionMatrix(predict(rfboth, test), test$admit, positive = '1')
+```
+
+The model's accuracy is 68%, and the sensitivity is 42%. In this specific example, oversampling seems to work better than the other two strategies, but this won't always be the case.
+
+### Synthetic data
+
+To avoid having too many identical data points, new information can be synthesized from existing information. These "synthetic" data are very similar to real data but are not identical.
+
+The **`ROSE()`function (Random Over-Sampling Examples)** creates a sample of synthetic data by expanding the feature space of examples from both minority and majority classes.
+
+```{r}
+# create new data similar to extent dataset
+rose <- ROSE(admit~., data = train, N = 500, seed=123)$data
+table(rose$admit)
+summary(rose)
+
+# run the model
+set.seed(123)
+rfrose <- randomForest(admit~., data=rose)
+confusionMatrix(predict(rfrose, test), test$admit, positive = '1')
+```
+
+## Useful references
+
+-   Brownlee J., 2020, Tour of Evaluation Metrics for Imbalanced Classification, machine Learning Mastery, accessed 13 August 2021, <https://machinelearningmastery.com/tour-of-evaluation-metrics-for-imbalanced-classification/>
+-   Johnson, J.M., Khoshgoftaar, T.M., 2019, Survey on deep learning with class imbalance, Journal of Big Data, Volume 6, Article 27
+-   Machine Learning Group - ULB, 2018, Credit Card Fraud Detection - Anonymized credit card transactions labeled as fraudulent or genuine version 3, <https://www.kaggle.com/mlg-ulb/creditcardfraud>
+-   <https://developers.google.com/machine-learning/data-prep/construct/sampling-splitting/imbalanced-data>
+
+\*\*Why we should balance the data? (Test)\*\*
+
+When there is minority people, then we need to put more data from the majority dataset to minority to make the algorithm do not choose the data using the size of the data meaning not to make the data size do not affect the algorithm choice for the data to make the result.

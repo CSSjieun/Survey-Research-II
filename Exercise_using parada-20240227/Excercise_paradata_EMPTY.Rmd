@@ -1,0 +1,189 @@
+---
+title: "Exercise: using Paradata"
+author: "Marga Torre"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+
+---
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=T, message=FALSE, warning=FALSE, knitr.purl.inline = TRUE )
+```
+
+```{r include=F}
+
+
+```
+
+## Intro
+Individuals' ideology is a crucial element in predicting voting patterns, yet it often has the highest non-response rate, complicating electoral forecasts. 
+
+Using both the __ESS core data__ and the __Interviewer Data File__, __Round 10__ (2020-2022) for __all countries,__ examine the following questions:
+
+-   Is the non-response rate higher in some contexts than in others? 
+-   What profile of interviewee is more likely to not reveal their ideology? 
+-   How does the interviewer's profile influence non-response, if at all?
+
+## Read data
+Load both the core data and the interviewer's data file (Round 10) for all countries. 
+```{r}
+data <- read.csv("./ESS10.csv")
+paradata <- read.csv("./ESS10_INT.csv")
+```
+
+Merge the two datasets by country and identification number
+```{r}
+library(dplyr)
+library(stringr)
+data <- left_join(data, paradata, by = c("idno", "cntry")) |> 
+  rename_with(~str_replace(., "\\.y$", ""), .cols = ends_with(".y")) |> 
+  select(-ends_with(".x"))
+# data = data |> select(-contains("x"))
+head(data) 
+```
+
+
+## Diferences by country
+Examine the distribution of missing values (NA) in the variable ideology by country. 
+```{r}
+data = data |> 
+  mutate(ideology_na = ifelse(lrscale > 10, 1, 0))
+
+prob_table = prob.table(table(data$cntry, data$ideology_na), margin=1)*100
+```
+
+## The effect of individual's profile
+Prepare the gender and age of the individual for the analysis
+```{r}
+# gender (man/woman)
+data <- data |>
+  mutate(gender = factor(ifelse(gndr == 1, "man", ifelse(gndr == 2, "woman", NA))))
+table(data$gender)
+
+# age
+data <- data |>
+  mutate(age = ifelse(agea == 999, NA, agea))
+summary(data$age)
+```
+
+Now, examine the probability of non-response based on the gender and age of the interviewer. Discuss the results.
+
+```{r}
+m0 = glm(ideology_na ~ gender + age + factor(cntry), data, family = "binomial")
+summary(m0)
+```
+
+Examine if age has a non-linear effect.  Discuss the results
+
+```{r}
+m0b = glm(ideology_na ~ gender + age + I(age^2) + factor(cntry), data, family = binomial(link = "logit"))
+summary(m0b)
+```
+
+## The effect of interviewer's profile
+Now, utilize paradata to investigate the impact of the interviewer's profile on the likelihood of non-response. Specifically, analyze the effects of the interviewer's gender, age, and interviewer's overall experience conducting the survey
+
+```{r}
+# gender of the interviewer (man/woman)
+data <- data |>
+  mutate(intgender = factor(ifelse(intgndr == 1, "man", ifelse(intgndr == 2, "woman", NA))))
+table(data$intgender)
+
+# age of the interviewer
+data <- data |>
+  mutate(intage = ifelse(intagea == 999, NA, intagea))
+summary(data$intage)
+
+# overall experience conducting the interview
+table(data$intgender, data$intage)
+data = data |> mutate(intexperience = ifelse(vdovexin >10, NA, vdovexin))
+summary(data$intexperience)
+```
+
+
+Run the regression and discuss the results
+```{r}
+m1<-glm(ideology_na ~ gender + age  + intgender + intage + + intexperience + factor(cntry), data, family=binomial(link = "logit"))
+summary(m1)
+```
+
+Note the impact of allowing age to have a non-linear effect. Would you say there is a maximum or minimum in the effect of age? Explain your answer. 
+```{r}
+m1b<-glm(ideology_na ~ gender + age + I(age^2) + intgender + intage + I(intage^2) + intexperience + factor(cntry), data, family=binomial(link = "logit"))
+summary(m1b)
+```
+
+Finally enhance the regression analysis by introducing a new variable that quantifies the gender match (or mismatch) between the interviewer and the interviewee.
+
+1.    mixed
+2.    female-female
+3.    male-male
+
+```{r}
+data <- data |>
+  filter(gndr <= 9, intgndr <= 9) |>
+  mutate(gender_combination = factor(case_when(
+    gndr == 1 & intgndr == 1 ~ "male-male",    # male-male
+    gndr == 2 & intgndr == 2 ~ "female-female", # female-female
+    gndr == 1 & intgndr == 2 ~ "mixed",   # male-female
+    gndr == 2 & intgndr == 1 ~ "mixed"    # female-male
+  )))
+
+# Table of gender_combination
+table(data$gender_combination)
+```
+
+Run the regression and discuss the results.
+```{r}
+m1c<-glm(ideology_na ~ age + I(age^2) + gender_combination + intage + I(intage^2) + intexperience + factor(cntry), data, family=binomial(link = "logit"))
+summary(m1c)
+```
+
+
+## Extracting tables from R statistical output
+
+```{r}
+# jtools
+install.packages("stargazer")
+library(stargazer)
+
+stargazer(m1b, m1c,  
+          type="text",
+          dep.var.labels=c("Probability of non-response in ideology"),
+          keep = c(
+            "(Intercept)", 
+            "age", 
+            "I(age^2)", 
+            "gender_combinationmale-male", 
+            "gender_combinationmixed", 
+            "intage", 
+            "I(intage^2)", 
+            "intexperience"),
+          covariate.labels = c(
+            "Age of the interviewee",
+            "Age of the interviewee (squared)",
+            "Pair: male-male (rc: female-famale)",
+            "Pair: mixed (rc: female-famale)",
+            "Age of the interviewer", 
+            "Age of the interviewer (squared)", 
+            "Overall experience of the interviewer"),        
+          out="models.txt")
+```
+
+
+
+
+
+
+
